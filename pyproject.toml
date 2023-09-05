@@ -1,0 +1,15 @@
+[project]
+name = "summarization_llm"
+description = "simple setup for qlora training"
+version = "0.1.0"
+authors = [
+    { name = "Dan Semin", email = "dsemin2305@gmail.com" }
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = []
+
+[build-system]
+build-backend = "flit_core.buildapi"
+requires = ["flit_core"]

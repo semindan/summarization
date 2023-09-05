@@ -1,0 +1,80 @@
+# lightning.pytorch==2.0.8
+seed_everything: true
+trainer:
+  # callbacks:
+    # - class_path: lightning.pytorch.callbacks.EarlyStopping
+    #   init_args:
+    #     patience: 5
+    #     monitor: eval/accumulate
+    #     min_delta: 0.0001
+    #     patience: 35
+    #     verbose: false
+    #     mode: max
+    #     check_finite: true
+  #   - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+  #     init_args:
+  #       save_top_k: 1
+  #       save_last: true
+  #       monitor: eval/accumulate
+  #       mode: max
+  #       dirpath: checkpoints/ # how to set the right folder?
+  #       filename: best
+  #       save_on_train_epoch_end: false
+  #   - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+  #     init_args:
+  #       logging_interval: step
+  # logger:
+  #     class_path: lightning.pytorch.loggers.WandbLogger
+  #     init_args:
+  #       name: run_name_test
+  #       save_dir: wandb_dir/run_name_test
+  #       project: wandb_project_name
+  accelerator: auto
+  strategy: auto
+  devices: auto
+  num_nodes: 1
+  precision: 16
+  callbacks: null
+  fast_dev_run: true
+  max_epochs: 2
+  min_epochs: null
+  max_steps: -1
+  min_steps: null
+  max_time: null
+  limit_train_batches: null
+  limit_val_batches: 
+  limit_test_batches: null
+  limit_predict_batches: null
+  overfit_batches: 0.0
+  val_check_interval: null
+  check_val_every_n_epoch: 1
+  num_sanity_val_steps: null
+  log_every_n_steps: null
+  enable_checkpointing: true
+  enable_progress_bar: true
+  enable_model_summary: true
+  accumulate_grad_batches: 1
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  deterministic: null
+  benchmark: null
+  inference_mode: true
+  use_distributed_sampler: true
+  profiler: null
+  detect_anomaly: false
+  barebones: false
+  plugins: null
+  sync_batchnorm: false
+  reload_dataloaders_every_n_epochs: 0
+  default_root_dir: null
+model:
+  config: null
+  path: meta-llama/Llama-2-7b-chat-hf
+data:
+  prompt_template: ''
+  model_path: meta-llama/Llama-2-7b-chat-hf
+  size: null
+  batch_size: 2
+  seq_length: 1024
+  rewrite: false
+ckpt_path: null
