@@ -4,3 +4,7 @@ add llama 2 prompt
 calibrate hyperparameters
 
 try fsdp with bigger llamas
+
+move model under modelmodule
+
+try brio
