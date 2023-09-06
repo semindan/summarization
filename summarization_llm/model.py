@@ -16,13 +16,15 @@ import bitsandbytes as bnb
 from torch import nn
 from transformers.trainer_pt_utils import get_parameter_names
 
+from torchmetrics.text.rouge import ROUGEScore
+
 class LlamaModule(pl.LightningModule):
-    def __init__(self, config, path='meta-llama/Llama-2-13b-chat-hf'):
+    def __init__(self, config=None, path='meta-llama/Llama-2-13b-chat-hf', *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(path)
-
+        self.rouge = ROUGEScore()
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type='nf4',
@@ -42,7 +44,7 @@ class LlamaModule(pl.LightningModule):
             device_map='auto',
         )
 
-        config = LoraConfig(
+        lora_config = LoraConfig(
             r=8, 
             lora_alpha=32, 
             lora_dropout=0.05, 
@@ -50,8 +52,9 @@ class LlamaModule(pl.LightningModule):
             task_type="CAUSAL_LM"
         )
 
-        self.model = get_peft_model(model, config)
+        self.model = get_peft_model(model, lora_config)
         self.model.print_trainable_parameters()
+        self.validation_outputs = [[],[]]
 
     def forward(
         self,
@@ -76,13 +79,34 @@ class LlamaModule(pl.LightningModule):
         labels = batch["labels"].to(out.logits.device)
         out_loss = self.compute_loss(out.logits, labels)
         print(out_loss)
+        self.log(
+                "train_loss",
+                out_loss,
+                on_step=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True)
         return out_loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         out = self(**batch)
         predictions = torch.argmax(out.logits, dim=-1)
         references = batch["labels"]
+        self.validation_outputs[0].append(self.tokenizer.batch_decode(predictions, skip_special_tokens=True))
+        self.validation_outputs[1].append(self.tokenizer.batch_decode(references, skip_special_tokens=True))
         return predictions, references
+
+    def on_validation_epoch_end(self) -> None:
+        all_preds = self.validation_outputs[0]
+        all_refs = self.validation_outputs[1]
+        for pred, ref in zip(all_preds, all_refs):
+            self.rouge(pred, ref)
+        results = self.rouge.compute()
+        for metric, result in results.items():
+            self.log(metric, result, on_epoch=True, logger=True)
+        self.validation_outputs.clear()
+        self.validation_outputs = [[], []]
+        
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         out = self(**batch)
@@ -98,18 +122,12 @@ class LlamaModule(pl.LightningModule):
 
     def configure_optimizers(self):
         print("⚡", "using Llama 2", "⚡")
-        # training_args = TrainingArguments(per_device_train_batch_size=4, **default_args)
-        weight_decay = 0.0
-        adam_beta1 = 0.9
-        adam_beta2 = 0.999
-        adam_epsilon = 1e-08
-        learning_rate = 0.001
         decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
         optimizer_grouped_parameters = [
             {
                 "params": [p for n, p in self.model.named_parameters() if n in decay_parameters],
-                "weight_decay": weight_decay,
+                "weight_decay": self.config["weight_decay"],
             },
             {
                 "params": [p for n, p in self.model.named_parameters() if n not in decay_parameters],
@@ -118,15 +136,15 @@ class LlamaModule(pl.LightningModule):
         ]
 
         optimizer_kwargs = {
-            "betas": (adam_beta1, adam_beta2),
-            "eps": adam_epsilon,
+            "betas": (self.config["adam_beta1"], self.config["adam_beta2"]),
+            "eps": self.config["adam_epsilon"],
         }
-        optimizer_kwargs["lr"] = learning_rate
+        optimizer_kwargs["lr"] = self.config["learning_rate"]
         adam_bnb_optim = bnb.optim.Adam8bit(
             optimizer_grouped_parameters,
-            betas=(adam_beta1, adam_beta2),
-            eps=adam_epsilon,
-            lr=learning_rate,
+            betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
+            eps=self.config["adam_epsilon"],
+            lr=self.config["learning_rate"],
         )
         return adam_bnb_optim
 

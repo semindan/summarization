@@ -70,6 +70,7 @@ class SumDataset(pl.LightningDataModule):
         match stage:
             case "fit":
                 self.train = data["train"]
+                self.validation = data["validation"]
             case "validation":
                 self.validation = data["validation"]
             case "test":
