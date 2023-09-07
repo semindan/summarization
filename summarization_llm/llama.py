@@ -1,13 +1,9 @@
 import lightning.pytorch as pl
 import torch
-from transformers import get_constant_schedule_with_warmup
-from transformers import get_linear_schedule_with_warmup
 from transformers import AutoTokenizer
-from transformers import BertForSequenceClassification
-import torch.nn.functional as F
 from peft import LoraConfig, get_peft_model
 from torch.nn import CrossEntropyLoss
-
+from summarization_llm.modelmodule import ModelModule
 
 from torch import cuda, bfloat16
 import transformers
@@ -18,13 +14,12 @@ from transformers.trainer_pt_utils import get_parameter_names
 
 from torchmetrics.text.rouge import ROUGEScore
 
-class LlamaModule(pl.LightningModule):
+class LlamaModule(ModelModule):
     def __init__(self, config=None, path='meta-llama/Llama-2-13b-chat-hf', *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(path)
-        self.rouge = ROUGEScore()
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type='nf4',
@@ -54,20 +49,19 @@ class LlamaModule(pl.LightningModule):
 
         self.model = get_peft_model(model, lora_config)
         self.model.print_trainable_parameters()
-        self.validation_outputs = [[],[]]
 
     def forward(
         self,
         input_ids=None,
         attention_mask=None,
-        reference_ids=None,
+        labels=None,
         *args,
         **kwargs
     ):
         return self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
-            labels=reference_ids,
+            labels=labels,
         )
 
     def compute_loss(self, logits, labels):
@@ -78,47 +72,30 @@ class LlamaModule(pl.LightningModule):
         out = self(**batch)
         labels = batch["labels"].to(out.logits.device)
         out_loss = self.compute_loss(out.logits, labels)
-        print(out_loss)
-        self.log(
-                "train_loss",
-                out_loss,
-                on_step=True,
-                prog_bar=True,
-                logger=True,
-                sync_dist=True)
+        print(out_loss, out.loss)
         return out_loss
 
+    def detokenize(self, predictions):
+        return self.tokenizer.batch_decode(predictions, skip_special_tokens=True)
+    
+    def generate_predictions(self, logits):
+        return torch.argmax(logits, dim=-1)
+    
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        out = self(**batch)
-        predictions = torch.argmax(out.logits, dim=-1)
-        references = batch["labels"]
-        self.validation_outputs[0].append(self.tokenizer.batch_decode(predictions, skip_special_tokens=True))
-        self.validation_outputs[1].append(self.tokenizer.batch_decode(references, skip_special_tokens=True))
+        out = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        predictions = self.detokenize(self.generate_predictions(out.logits))
+        references = self.detokenize(batch["labels"])
         return predictions, references
-
-    def on_validation_epoch_end(self) -> None:
-        all_preds = self.validation_outputs[0]
-        all_refs = self.validation_outputs[1]
-        for pred, ref in zip(all_preds, all_refs):
-            self.rouge(pred, ref)
-        results = self.rouge.compute()
-        for metric, result in results.items():
-            self.log(metric, result, on_epoch=True, logger=True)
-        self.validation_outputs.clear()
-        self.validation_outputs = [[], []]
-        
-
+    
     def test_step(self, batch, batch_idx, dataloader_idx=0):
-        out = self(**batch)
-        predictions = torch.argmax(out.logits, dim=-1)
-        references = batch["labels"]
-        return predictions, references
+        out = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        predictions = self.detokenize(self.generate_predictions(out.logits))
+        return predictions
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        out = self(**batch)
-        predictions = torch.argmax(out.logits, dim=-1)
-        references = batch["labels"]
-        return predictions, references
+        out = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        predictions = self.detokenize(self.generate_predictions(out.logits))
+        return predictions
 
     def configure_optimizers(self):
         print("⚡", "using Llama 2", "⚡")

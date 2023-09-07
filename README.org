@@ -8,3 +8,5 @@ try fsdp with bigger llamas
 move model under modelmodule
 
 try brio
+
+try alignscore

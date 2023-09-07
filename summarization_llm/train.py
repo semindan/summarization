@@ -1,7 +1,5 @@
 from lightning.pytorch.cli import LightningCLI
-from lightning.pytorch.callbacks.early_stopping import EarlyStopping
-from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
-from summarization_llm.model import LlamaModule
+from summarization_llm.modelmodule import ModelModule
 from summarization_llm.data import SumDataset
 import torch
 import transformers
@@ -12,9 +10,10 @@ def set_precision():
 
 def main():
     set_precision()
-    cli = MyLightningCLI(model_class=LlamaModule,
+    cli = MyLightningCLI(model_class=ModelModule,
                          datamodule_class=SumDataset,
-                         save_config_kwargs={"overwrite" : True})
+                         save_config_kwargs={"overwrite" : True},
+                         subclass_mode_model=True)
     
 
 if __name__ == "__main__":

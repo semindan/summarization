@@ -66,14 +66,27 @@ trainer:
   sync_batchnorm: false
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
+# model:
+#   child_model:
+#       class_path: summarization_llm.model.LlamaModule
+#       init_args:
+#         config:
+#           weight_decay: 0.0
+#           adam_beta1: 0.9
+#           adam_beta2: 0.999
+#           adam_epsilon: 1e-08
+#           learning_rate: 0.0001
+#         path: meta-llama/Llama-2-7b-chat-hf
 model:
-  config:
-    weight_decay: 0.0
-    adam_beta1: 0.9
-    adam_beta2: 0.999
-    adam_epsilon: 1e-08
-    learning_rate: 0.0001
-  path: meta-llama/Llama-2-7b-chat-hf
+  class_path: summarization_llm.llama.LlamaModule
+  init_args:
+    config:
+      weight_decay: 0.0
+      adam_beta1: 0.9
+      adam_beta2: 0.999
+      adam_epsilon: 1e-08
+      learning_rate: 0.0001
+    path: meta-llama/Llama-2-7b-chat-hf
 data:
   prompt_template: ''
   model_path: meta-llama/Llama-2-7b-chat-hf
