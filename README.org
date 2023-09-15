@@ -9,4 +9,6 @@ move model under modelmodule
 
 try brio
 
-try alignscore
+try alignscore:
+    evaluation.py: 
+        read from results and evaluate

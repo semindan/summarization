@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import datasets
-from summarization_llm.model import LlamaModule
+from summarization_llm.llama import LlamaModule
 from summarization_llm.data import SumDataset
 import transformers
 import unittest
@@ -13,7 +13,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_one_train_step(self):        
         model_config = transformers.AutoConfig.from_pretrained(self.model_name)
-        data = SumDataset()
+        data = SumDataset(rewrite=True)
         data.setup("fit")
         model = LlamaModule(model_config)
         loader = data.train_dataloader()

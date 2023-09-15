@@ -18,7 +18,9 @@ import os
 
 @dataclass
 class SumDataset(pl.LightningDataModule):
-    prompt_template: str = ""
+    system_message: str = "You are a model that summarizes the given Text.\
+     Meaning everything you mention in your summarization must not contradict Text.\
+     Think internally and provide only the resulting summarization without any comments."
     model_path: str = 'meta-llama/Llama-2-13b-chat-hf'
     size: Any = None
     batch_size: int = 2
@@ -29,10 +31,17 @@ class SumDataset(pl.LightningDataModule):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
 
+    def build_prompt(self, example):
+        example["document"] =  f"""<s>[INST] <<SYS>>
+            {self.system_message}
+            <</SYS>>
+            Text: {example["document"]} [/INST]"""
+        return example
     def prepare_data(self):
         mod_path = Path(__file__).parent
         if not os.path.exists(f"{mod_path}/data") or self.rewrite:
             data = load_dataset("xsum")
+            data = data.map(self.build_prompt, batched=False)
             data = self.tokenize_data(data)
             data.save_to_disk(f"{mod_path}/data/sumdata.hf")
 
@@ -65,7 +74,6 @@ class SumDataset(pl.LightningDataModule):
         mod_path = Path(__file__).parent
         data = datasets.load_from_disk(f"{mod_path}/data/sumdata.hf")
         data = data.remove_columns(["document", "summary", "id"])
-        print(data["train"].features)
         data.set_format("pt")
         match stage:
             case "fit":

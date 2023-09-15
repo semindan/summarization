@@ -17,6 +17,12 @@ class TestDataModule(unittest.TestCase):
         data.prepare_data()
         mod_path = Path(__file__).parent.parent
         self.assertTrue(os.path.exists(f"{mod_path}/data"))
+        
+    def test_build_prompt(self):
+        data = SumDataset(rewrite=True)
+        data.prepare_data()
+        mod_path = Path(__file__).parent.parent
+        self.assertTrue(os.path.exists(f"{mod_path}/data"))
 
 
 if __name__ == '__main__':

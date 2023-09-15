@@ -73,6 +73,7 @@ class LlamaModule(ModelModule):
         labels = batch["labels"].to(out.logits.device)
         out_loss = self.compute_loss(out.logits, labels)
         print(out_loss, out.loss)
+        
         return out_loss
 
     def detokenize(self, predictions):
