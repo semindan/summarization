@@ -8,6 +8,7 @@ class ModelModule(pl.LightningModule):
         self.save_hyperparameters()
         self.rouge = ROUGEScore()
         self.validation_outputs = []
+        # self.model = MT5ForConditionalGeneration.from_pretrained("google/mt5-small")
 
     def forward(self, *args, **kwargs):
         pass
@@ -35,6 +36,7 @@ class ModelModule(pl.LightningModule):
     
     def on_validation_epoch_end(self) -> None:
         for pred, ref in self.validation_outputs:
+            print(pred, ref)
             self.rouge(pred, ref)
         rouge_type_results = self.rouge.compute()
         for metric, result in rouge_type_results.items():

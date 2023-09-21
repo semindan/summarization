@@ -3,3 +3,10 @@ data/
 wandb_dir/
 AlignScoreCheckpoints/
 AlignScore/
+summarization_llm/lightning_logs/
+lightning_logs/
+scratch_gen_examples.py
+scratch_checkpoint.py
+
+
+

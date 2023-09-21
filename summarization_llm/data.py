@@ -25,21 +25,23 @@ class SumDataset(pl.LightningDataModule):
     size: Any = None
     batch_size: int = 2
     seq_length: int = 1024
-    rewrite: bool = False
+    overwrite: bool = False
     
     def __post_init__(self):
         super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, padding_side="left")
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def build_prompt(self, example):
         example["document"] =  f"""<s>[INST] <<SYS>>
             {self.system_message}
             <</SYS>>
-            Text: {example["document"]} [/INST]"""
+            Summarize this Text: {example["document"]} [/INST]"""
         return example
+        
     def prepare_data(self):
         mod_path = Path(__file__).parent
-        if not os.path.exists(f"{mod_path}/data") or self.rewrite:
+        if not os.path.exists(f"{mod_path}/data") or self.overwrite:
             data = load_dataset("xsum")
             data = data.map(self.build_prompt, batched=False)
             data = self.tokenize_data(data)

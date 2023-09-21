@@ -13,7 +13,7 @@ class TestPipeline(unittest.TestCase):
 
     def test_one_train_step(self):        
         model_config = transformers.AutoConfig.from_pretrained(self.model_name)
-        data = SumDataset(rewrite=True)
+        data = SumDataset(overwrite=True)
         data.setup("fit")
         model = LlamaModule(model_config)
         loader = data.train_dataloader()
