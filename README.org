@@ -1,0 +1,6 @@
+check if it's possible to have more than one batch on one gpu
+pls I hope distributed strategies are going to work, multinode works
+fix nans in training_step
+implement brio using Vasek's code
+create evaluation pipeline with AlignScore
+fix weight_decay

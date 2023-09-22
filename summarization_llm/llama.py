@@ -5,6 +5,7 @@ from transformers import AutoTokenizer
 from peft import LoraConfig, get_peft_model
 from torch.nn import CrossEntropyLoss
 from summarization_llm.modelmodule import ModelModule
+from summarization_llm.modeling_llama import LlamaForCausalLM
 
 from torch import cuda, bfloat16
 import transformers
@@ -33,12 +34,13 @@ class LlamaModule(ModelModule):
         model_config = transformers.AutoConfig.from_pretrained(
             path,
         )
-        model = transformers.AutoModelForCausalLM.from_pretrained(
+        model = LlamaForCausalLM.from_pretrained(
             path,
             trust_remote_code=True,
             config=model_config,
             quantization_config=bnb_config,
             device_map='auto',
+            # device_map={'':torch.cuda.current_device()}
         )
 
         # should it be there at all then if we pad using </s>?
@@ -52,7 +54,6 @@ class LlamaModule(ModelModule):
             bias=config["bias"], 
             task_type=config["task_type"],
         )
-
         self.model = get_peft_model(model, lora_config)
         self.model.print_trainable_parameters()
 
@@ -84,6 +85,7 @@ class LlamaModule(ModelModule):
         return loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
 
     def training_step(self, batch, batch_idx):
+        batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
         out = self(**batch)
         return out.loss
 
@@ -95,19 +97,35 @@ class LlamaModule(ModelModule):
     
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # output_vanilla = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
+        # breakpoint()
+
+        # RuntimeError: probability tensor contains either `inf`, `nan` or element < 0
+        # clue: self.model.base_model.model.model.layers[0].self_attn.q_proj.lora_B.default.weight inits to zeros...
+        # https://github.com/huggingface/transformers/pull/21955#issuecomment-1454979110 solution?
+        # nope...
+        # doesn't work with left padding and pad token
+        # without left padding and pad token it works (sumdata2)
+        # what about pad token only (sumdata3) -- works
+        # wtf is it left padding after all? ok...
+        # also possible local solutions: https://github.com/huggingface/transformers/issues/25065
+        # it works! so just need to prevent underflow, viz. l ~343 in modeling_llama.py
+
         original_length = batch["input_ids"].size()[1]
         output = self.model.generate(input_ids=batch['input_ids'].squeeze(1),
                                 attention_mask=batch['attention_mask'].squeeze(1),
                                 # max_length=128,
                                 # min_length=original_length + 32,
-                                max_new_tokens = 64,
+                                max_new_tokens = 32,
                                 # min_new_tokens = 32,
-                                # no_repeat_ngram_size=3,
-                                num_beams=1,
+                                no_repeat_ngram_size=3,
+                                num_beams=6,
                                 # top_p=1,
                                 # early_stopping=True
+                                # temperature=0.1,
+                                # top_p = None,
+                                # temperature = None,
+                                do_sample=True
                                 )
-        # predictions = self.detokenize(self.generate_predictions(out.logits))
         predictions = self.detokenize(output[:, original_length:]) # include only new tokens
         references = self.detokenize(batch["labels"])
         return predictions, references

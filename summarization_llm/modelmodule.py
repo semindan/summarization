@@ -1,15 +1,12 @@
 from typing import Any
 import lightning.pytorch as pl
 from torchmetrics.text.rouge import ROUGEScore
-
 class ModelModule(pl.LightningModule):
     def __init__(self, config=None, path=None,  *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.rouge = ROUGEScore()
         self.validation_outputs = []
-        # self.model = MT5ForConditionalGeneration.from_pretrained("google/mt5-small")
-
     def forward(self, *args, **kwargs):
         pass
 
@@ -40,7 +37,7 @@ class ModelModule(pl.LightningModule):
             self.rouge(pred, ref)
         rouge_type_results = self.rouge.compute()
         for metric, result in rouge_type_results.items():
-            self.log(metric, result, on_epoch=True, logger=True)
+            self.log(metric, result, on_epoch=True, logger=True, sync_dist=True)
         self.validation_outputs.clear()
         
 
