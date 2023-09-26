@@ -14,37 +14,26 @@ from transformers import AutoTokenizer
 from typing import Any
 from pathlib import Path
 import os
+from summarization_llm.data import DataModule
 
-
-class DataModule(pl.LightningDataModule):
-    def __init__(self,
-    prompt: str = "summarize:",
-    model_path: Any = None,
-    size: Any = None,
-    batch_size: int = 2,
-    seq_length: int = 1024,
-    overwrite: bool = False) -> None:
-        super().__init__()
+@dataclass
+class T5Dataset(DataModule):
+    prompt: str = "summarize:"
+    model_path: Any = None
+    size: Any = None
+    batch_size: int = 2
+    seq_length: int = 1024
+    overwrite: bool = False
+    
     def __post_init__(self):
         super().__init__()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
 
     def build_prompt(self, example):
-        example[""] =  f"""<s>[INST] <<SYS>>
-            {self.prompt}
-            <</SYS>>
-            Summarize this Text: {example["document"]} [/INST]"""
+        example["document"] =  f"Article:{example['document']}\n\nSummarize the main points of that article."
         return example
         
 
-    def build_prompt_simple(self, example):
-        example["document"] =  f"""
-        Summarize this Text:
-        {example["document"]}
-        ---
-        Summary: 
-        """
-        return example
     def prepare_data(self):
 
         mod_path = Path(__file__).parent
@@ -53,9 +42,9 @@ class DataModule(pl.LightningDataModule):
             if self.size:
                 for split_name, split_data  in data.items():
                     data[split_name] = split_data.select(range(self.size))
-            data = data.map(self.build_prompt_simple, batched=False)
+            data = data.map(self.build_prompt, batched=False)
             data = self.tokenize_data(data)
-            data.save_to_disk(f"{mod_path}/data/sumdata5.hf")
+            data.save_to_disk(f"{mod_path}/data/sumdataT5.hf")
 
     def tokenize_data(self, data):
         def tokenize(example):
@@ -83,7 +72,7 @@ class DataModule(pl.LightningDataModule):
 
     def setup(self, stage: str):
         mod_path = Path(__file__).parent
-        data = datasets.load_from_disk(f"{mod_path}/data/sumdata5.hf")
+        data = datasets.load_from_disk(f"{mod_path}/data/sumdataT5.hf")
         data = data.remove_columns(["document", "summary", "id"])
         data.set_format("pt")
         match stage:

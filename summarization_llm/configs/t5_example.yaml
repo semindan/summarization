@@ -17,7 +17,7 @@ trainer:
         save_last: true
         # monitor: eval/accumulate
         mode: max
-        dirpath: checkpoints/vanilla7b # how to set the right folder?
+        dirpath: checkpoints/flant5 # how to set the right folder?
         filename: "{epoch}-{step}"
         save_on_train_epoch_end: false
         # every_n_train_steps: 1
@@ -72,7 +72,7 @@ trainer:
   reload_dataloaders_every_n_epochs: 1
   default_root_dir: null
 model:
-  class_path: summarization_llm.llama.LlamaModule
+  class_path: summarization_llm.t5.T5Module
   init_args:
     config:
       # optimizer
@@ -86,13 +86,15 @@ model:
       lora_alpha: 32
       lora_dropout: 0.1
       bias: "none"
-      task_type: "CAUSAL_LM"
-    path: meta-llama/Llama-2-7b-hf
+      task_type: "SEQ_2_SEQ_LM"
+    path: google/flan-t5-large
 data:
-  # system_message: null
-  model_path: meta-llama/Llama-2-7b-hf
-  size: 3000
-  batch_size: 1
-  seq_length: 1024
-  overwrite: false
+  class_path: summarization_llm.t5_data.T5Dataset
+  init_args:
+    # system_message: null
+    model_path: google/flan-t5-large
+    size: 3000
+    batch_size: 8
+    seq_length: 1024
+    overwrite: false
 ckpt_path: null

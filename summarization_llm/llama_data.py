@@ -14,24 +14,37 @@ from transformers import AutoTokenizer
 from typing import Any
 from pathlib import Path
 import os
+from summarization_llm.data import DataModule
 
 
-class DataModule(pl.LightningDataModule):
-    def __init__(self,
-    prompt: str = "summarize:",
-    model_path: Any = None,
-    size: Any = None,
-    batch_size: int = 2,
-    seq_length: int = 1024,
-    overwrite: bool = False) -> None:
-        super().__init__()
+@dataclass
+class SumDataset(DataModule):
+    system_message: str = "Summarize this text:"
+    model_path: str = 'meta-llama/Llama-2-13b-chat-hf'
+    size: Any = None
+    batch_size: int = 2
+    seq_length: int = 1024
+    overwrite: bool = False
+    
     def __post_init__(self):
         super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        # self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, padding_side="left")
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+        # this workaround is really bad
+        # self.tokenizer.add_special_tokens({"pad_token":"<pad>"})
+        # breakpoint()
+        # self.tokenizer.pad_token_id = self.tokenizer
 
     def build_prompt(self, example):
-        example[""] =  f"""<s>[INST] <<SYS>>
-            {self.prompt}
+        """
+            system_message: str = "You are a model that summarizes the given Text.\
+        Meaning everything you mention in your summarization must not contradict Text.\
+        Think internally and provide only the resulting summarization."
+    
+        """
+        example["document"] =  f"""<s>[INST] <<SYS>>
+            {self.system_message}
             <</SYS>>
             Summarize this Text: {example["document"]} [/INST]"""
         return example

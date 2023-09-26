@@ -1,6 +1,6 @@
 import unittest
 from pprint import pprint
-from summarization_llm.data import SumDataset
+from summarization_llm.llama_data import SumDataset
 import summarization_llm
 import os
 from pathlib import Path

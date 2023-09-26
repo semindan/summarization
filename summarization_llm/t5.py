@@ -6,7 +6,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, pr
 from torch.nn import CrossEntropyLoss
 from summarization_llm.modelmodule import ModelModule
 from summarization_llm.modeling_llama import LlamaForCausalLM
-
+from transformers import AutoModelForSeq2SeqLM
 from torch import cuda, bfloat16
 import transformers
 
@@ -16,16 +16,12 @@ from transformers.trainer_pt_utils import get_parameter_names
 
 from torchmetrics.text.rouge import ROUGEScore
 
-class LlamaModule(ModelModule):
-    def __init__(self, config=None, path='meta-llama/Llama-2-13b-chat-hf', *args, **kwargs):
+class T5Module(ModelModule):
+    def __init__(self, config=None, path='google/flan-t5-large', *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        self.tokenizer = AutoTokenizer.from_pretrained(path, padding_side="left")
-        # self.tokenizer = AutoTokenizer.from_pretrained(path)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        # self.tokenizer.pad_token = 0
-        # self.tokenizer.add_special_tokens({"pad_token":"<pad>"})
+        self.tokenizer = AutoTokenizer.from_pretrained(path)
 
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
@@ -37,12 +33,7 @@ class LlamaModule(ModelModule):
         model_config = transformers.AutoConfig.from_pretrained(
             path,
         )
-        model_config.pad_token_id = self.tokenizer.pad_token_id
-        # model_config.vocab_size = len(self.tokenizer) + 127
-        # bnb_config.pad_token_id = self.tokenizer.pad_token_id
-        # bnb_config.vocab_size = len(self.tokenizer) + 127
-
-        model = LlamaForCausalLM.from_pretrained(
+        model = AutoModelForSeq2SeqLM.from_pretrained(
             path,
             trust_remote_code=True,
             config=model_config,
@@ -50,9 +41,6 @@ class LlamaModule(ModelModule):
             device_map='auto',
             # device_map={'':torch.cuda.current_device()}
         )
-
-        # should it be there at all then if we pad using </s>?
-        # model.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=128)
 
         model = prepare_model_for_kbit_training(model)
 
@@ -63,7 +51,7 @@ class LlamaModule(ModelModule):
             bias=config["bias"], 
             task_type=config["task_type"],
             inference_mode = False,
-            target_modules = ["q_proj", "v_proj"]
+            # target_modules = ["q_proj", "v_proj"]
         )
         self.model = get_peft_model(model, lora_config)
         self.model.print_trainable_parameters()
@@ -123,7 +111,7 @@ class LlamaModule(ModelModule):
         # followed the hugging face tips and added the 32001st token <pad>
         # it works, but had to change the view code line 838 in modeling_llama.py
         # works, but produces intangible output
-
+        # breakpoint()
         original_length = batch["input_ids"].size()[1]
         output = self.model.generate(input_ids=batch['input_ids'].squeeze(1),
                                 attention_mask=batch['attention_mask'].squeeze(1),
@@ -140,10 +128,11 @@ class LlamaModule(ModelModule):
                                 # top_p = None,
                                 # temperature = None,
                                 do_sample=True,
-                                pad_token_id = self.tokenizer.pad_token_id
+                                # pad_token_id = self.tokenizer.pad_token_id
                                 )
         
-        predictions = self.detokenize(output[:, original_length:]) # include only new tokens
+        # breakpoint()
+        predictions = self.detokenize(output) # include only new tokens
         references = self.detokenize(batch["labels"])
         return predictions, references
     
@@ -158,7 +147,7 @@ class LlamaModule(ModelModule):
         return predictions
 
     def configure_optimizers(self):
-        print("⚡", "using Llama 2", "⚡")
+        print("⚡", "using Flan-T5", "⚡")
         decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
         # params = self.trainer.model.parameters()

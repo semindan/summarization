@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 import datasets
 from summarization_llm.llama import LlamaModule
-from summarization_llm.data import SumDataset
+from summarization_llm.llama_data import SumDataset
 import transformers
 import unittest
 

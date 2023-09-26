@@ -8,5 +8,8 @@ lightning_logs/
 scratch_gen_examples.py
 scratch_checkpoint.py
 
+checkpoints/
+scratch*
+hfexample*
 
 
