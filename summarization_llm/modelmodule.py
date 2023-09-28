@@ -14,7 +14,7 @@ class ModelModule(pl.LightningModule):
         pass
 
     def on_train_batch_end(self, outputs, batch: Any, batch_idx: int) -> None:
-        self.log("train_loss",
+        self.log("train/train_loss",
                 outputs["loss"],
                 on_step=True,
                 prog_bar=True,
@@ -28,17 +28,24 @@ class ModelModule(pl.LightningModule):
         pass
 
     def on_validation_batch_end(self, outputs, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> None:
-        self.validation_outputs.append(outputs)
+        self.log("validation/validation_loss",
+                outputs,
+                on_step=True,
+                prog_bar=True,
+                logger=True,
+                sync_dist=True)
+        # self.validation_outputs.append(outputs)
         return super().on_validation_batch_end(outputs, batch, batch_idx, dataloader_idx)
     
     def on_validation_epoch_end(self) -> None:
-        for pred, ref in self.validation_outputs:
-            print(pred, ref)
-            self.rouge(pred, ref)
-        rouge_type_results = self.rouge.compute()
-        for metric, result in rouge_type_results.items():
-            self.log(metric, result, on_epoch=True, logger=True, sync_dist=True)
-        self.validation_outputs.clear()
+        pass
+        # for pred, ref in self.validation_outputs:
+        #     print(pred, ref)
+        #     self.rouge(pred, ref)
+        # rouge_type_results = self.rouge.compute()
+        # for metric, result in rouge_type_results.items():
+        #     self.log(metric, result, on_epoch=True, logger=True, sync_dist=True)
+        # self.validation_outputs.clear()
         
 
     def test_step(self, batch, batch_idx, dataloader_idx=0):

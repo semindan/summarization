@@ -1,6 +1,7 @@
 __pycache__
 data/
 wandb_dir/
+wandb/
 AlignScoreCheckpoints/
 AlignScore/
 summarization_llm/lightning_logs/

@@ -1,46 +1,36 @@
 from typing import Any, Dict
-import lightning.pytorch as pl
 import torch
 from transformers import AutoTokenizer
-from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, prepare_model_for_int8_training
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from torch.nn import CrossEntropyLoss
 from summarization_llm.modelmodule import ModelModule
 from summarization_llm.modeling_llama import LlamaForCausalLM
-
-from torch import cuda, bfloat16
 import transformers
-
 import bitsandbytes as bnb
 from torch import nn
 from transformers.trainer_pt_utils import get_parameter_names
 
-from torchmetrics.text.rouge import ROUGEScore
-
 class LlamaModule(ModelModule):
-    def __init__(self, config=None, path='meta-llama/Llama-2-13b-chat-hf', *args, **kwargs):
+    def __init__(self, config=None, path='meta-llama/Llama-2-7b-hf', *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
         self.config = config
-        self.tokenizer = AutoTokenizer.from_pretrained(path, padding_side="left")
-        # self.tokenizer = AutoTokenizer.from_pretrained(path)
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        # self.tokenizer.pad_token = 0
-        # self.tokenizer.add_special_tokens({"pad_token":"<pad>"})
+        self.tokenizer = AutoTokenizer.from_pretrained(path)
+        self.tokenizer.pad_token_id = 0
 
+        bnb_4_bit_compute_type = "bfloat16"
+        compute_dtype = getattr(torch, bnb_4_bit_compute_type)
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
+            # load_in_8bit=True,
             bnb_4bit_quant_type='nf4',
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=bfloat16
+            bnb_4bit_use_double_quant=False,
+            bnb_4bit_compute_dtype=compute_dtype
         )
 
         model_config = transformers.AutoConfig.from_pretrained(
             path,
         )
-        model_config.pad_token_id = self.tokenizer.pad_token_id
-        # model_config.vocab_size = len(self.tokenizer) + 127
-        # bnb_config.pad_token_id = self.tokenizer.pad_token_id
-        # bnb_config.vocab_size = len(self.tokenizer) + 127
 
         model = LlamaForCausalLM.from_pretrained(
             path,
@@ -48,11 +38,7 @@ class LlamaModule(ModelModule):
             config=model_config,
             quantization_config=bnb_config,
             device_map='auto',
-            # device_map={'':torch.cuda.current_device()}
         )
-
-        # should it be there at all then if we pad using </s>?
-        # model.resize_token_embeddings(len(self.tokenizer), pad_to_multiple_of=128)
 
         model = prepare_model_for_kbit_training(model)
 
@@ -62,13 +48,11 @@ class LlamaModule(ModelModule):
             lora_dropout=config["lora_dropout"], 
             bias=config["bias"], 
             task_type=config["task_type"],
-            inference_mode = False,
             target_modules = ["q_proj", "v_proj"]
         )
         self.model = get_peft_model(model, lora_config)
         self.model.print_trainable_parameters()
-
-
+    
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         super().on_save_checkpoint(checkpoint)
         dirpath = self.trainer.checkpoint_callback.dirpath
@@ -96,72 +80,28 @@ class LlamaModule(ModelModule):
         return loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
 
     def training_step(self, batch, batch_idx):
-        batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
+        # batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
         out = self(**batch)
         return self.compute_loss(out.logits, batch["labels"])
-        return out.loss
 
     def detokenize(self, predictions):
-        return self.tokenizer.batch_decode(predictions, skip_special_tokens=True, clean_up_tokenization_spaces=True)
-    
-    def generate_predictions(self, logits):
-        return torch.argmax(logits, dim=-1)
+        return self.tokenizer.batch_decode(predictions, skip_special_tokens=True)
     
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-
-        # RuntimeError: probability tensor contains either `inf`, `nan` or element < 0
-        # clue: self.model.base_model.model.model.layers[0].self_attn.q_proj.lora_B.default.weight inits to zeros...
-        # https://github.com/huggingface/transformers/pull/21955#issuecomment-1454979110 solution?
-        # nope...
-        # doesn't work with left padding and pad token
-        # without left padding and pad token it works (sumdata2)
-        # what about pad token only (sumdata3) -- works
-        # wtf is it left padding after all? ok...
-        # also possible local solutions: https://github.com/huggingface/transformers/issues/25065
-        # it works! so just need to prevent underflow, viz. l ~343 in modeling_llama.py
-        # still getting some occasional nans though, let's try bos token (sumdata4)
-        # followed the hugging face tips and added the 32001st token <pad>
-        # it works, but had to change the view code line 838 in modeling_llama.py
-        # works, but produces intangible output
-
-        original_length = batch["input_ids"].size()[1]
-        output = self.model.generate(input_ids=batch['input_ids'].squeeze(1),
-                                attention_mask=batch['attention_mask'].squeeze(1),
-                                # max_length=128,
-                                # min_length=original_length + 32,
-                                max_new_tokens = 64,
-                                # min_new_tokens = 32,
-                                # no_repeat_ngram_size=3,
-                                num_beams=6,
-                                # top_p=1,
-                                # early_stopping=True
-                                # temperature=2.0,
-                                repetition_penalty = 3.0,
-                                # top_p = None,
-                                # temperature = None,
-                                do_sample=True,
-                                pad_token_id = self.tokenizer.pad_token_id
-                                )
-        
-        predictions = self.detokenize(output[:, original_length:]) # include only new tokens
-        references = self.detokenize(batch["labels"])
-        return predictions, references
-    
+        # batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
+        out = self(**batch)
+        return self.compute_loss(out.logits, batch["labels"])
+     
     def test_step(self, batch, batch_idx, dataloader_idx=0):
-        out = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
-        predictions = self.detokenize(self.generate_predictions(out.logits))
-        return predictions
+        pass
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        out = self(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"])
-        predictions = self.detokenize(self.generate_predictions(out.logits))
-        return predictions
+        pass
 
     def configure_optimizers(self):
         print("⚡", "using Llama 2", "⚡")
         decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
-        # params = self.trainer.model.parameters()
         # params = self.trainer.model.named_parameters()
         params = self.model.named_parameters()
         optimizer_grouped_parameters = [
@@ -180,23 +120,16 @@ class LlamaModule(ModelModule):
             "eps": self.config["adam_epsilon"],
         }
         optimizer_kwargs["lr"] = self.config["learning_rate"]
-        adam_bnb_optim = bnb.optim.Adam8bit(
+        adam_bnb_optim = bnb.optim.PagedAdam32bit(
             optimizer_grouped_parameters,
             betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
             eps=self.config["adam_epsilon"],
             lr=self.config["learning_rate"],
         )
-        # adam_bnb_optim = bnb.optim.Adam8bit(
-        #     params,
-        #     betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
-        #     eps=self.config["adam_epsilon"],
-        #     lr=self.config["learning_rate"],
-        # )
         return adam_bnb_optim
 
 
 
-# %%
 
 
 

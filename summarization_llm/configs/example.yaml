@@ -1,4 +1,4 @@
-# lightning.pytorch==2.0.8
+# lightning.pytorch==2.0.9
 seed_everything: 42
 trainer:
   callbacks:
@@ -32,17 +32,16 @@ trainer:
         project: wandb_project_name
   accelerator: gpu
   strategy: auto
-    # class_path: lightning.pytorch.strategies.DDPStrategy
-    # init_args:
-    #   static_graph: True
-
+  #   class_path: lightning.pytorch.strategies.DDPStrategy
+  #   init_args:
+  #     static_graph: True
   devices: 1
   num_nodes: 1
   precision: bf16-mixed
   fast_dev_run: false
   max_epochs: 2
   min_epochs: null
-  max_steps: 10000
+  max_steps: 2000
   min_steps: null
   max_time: null
   limit_train_batches: null
@@ -57,7 +56,7 @@ trainer:
   enable_checkpointing: true
   enable_progress_bar: true
   enable_model_summary: true
-  accumulate_grad_batches: 4
+  accumulate_grad_batches: 2
   gradient_clip_val: null
   gradient_clip_algorithm: null
   deterministic: null
@@ -76,23 +75,24 @@ model:
   init_args:
     config:
       # optimizer
-      weight_decay: 0.01
+      weight_decay: 0.02
       adam_beta1: 0.9
       adam_beta2: 0.999
       adam_epsilon: 1e-08
-      learning_rate: 0.0001
+      learning_rate: 0.0003
       # lora
       r: 8
       lora_alpha: 32
-      lora_dropout: 0.1
+      lora_dropout: 0.05
       bias: "none"
       task_type: "CAUSAL_LM"
     path: meta-llama/Llama-2-7b-hf
 data:
-  # system_message: null
-  model_path: meta-llama/Llama-2-7b-hf
-  size: 3000
-  batch_size: 1
-  seq_length: 1024
-  overwrite: false
+  class_path: summarization_llm.llama_data.SumDataset
+  init_args:
+    model_path: meta-llama/Llama-2-7b-hf
+    size: 1000
+    batch_size: 4
+    seq_length: 2048
+    overwrite: false
 ckpt_path: null

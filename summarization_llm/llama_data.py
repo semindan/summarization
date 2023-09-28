@@ -1,103 +1,38 @@
-import lightning.pytorch as pl
-from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-import torch
 from datasets import load_dataset, interleave_datasets
 from torch.utils.data import DataLoader
-import numpy as np
 import datasets
-from datasets import dataset_dict
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import RandomSampler
-import re
 from dataclasses import dataclass
 from transformers import AutoTokenizer
 from typing import Any
 from pathlib import Path
 import os
 from summarization_llm.data import DataModule
+from itertools import chain
 
 
 @dataclass
 class SumDataset(DataModule):
-    system_message: str = "Summarize this text:"
-    model_path: str = 'meta-llama/Llama-2-13b-chat-hf'
+    prompt: str = ""
+    model_path: str = 'meta-llama/Llama-2-7b-hf'
     size: Any = None
     batch_size: int = 2
-    seq_length: int = 1024
+    seq_length: int = 2048
     overwrite: bool = False
     
     def __post_init__(self):
         super().__init__()
-        # self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, padding_side="left")
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        # this workaround is really bad
-        # self.tokenizer.add_special_tokens({"pad_token":"<pad>"})
-        # breakpoint()
-        # self.tokenizer.pad_token_id = self.tokenizer
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
+        self.tokenizer.pad_token_id = 0
 
-    def build_prompt(self, example):
-        """
-            system_message: str = "You are a model that summarizes the given Text.\
-        Meaning everything you mention in your summarization must not contradict Text.\
-        Think internally and provide only the resulting summarization."
-    
-        """
-        example["document"] =  f"""<s>[INST] <<SYS>>
-            {self.system_message}
-            <</SYS>>
-            Summarize this Text: {example["document"]} [/INST]"""
-        return example
-        
-
-    def build_prompt_simple(self, example):
-        example["document"] =  f"""
-        Summarize this Text:
-        {example["document"]}
-        ---
-        Summary: 
-        """
-        return example
     def prepare_data(self):
-
         mod_path = Path(__file__).parent
         if not os.path.exists(f"{mod_path}/data") or self.overwrite:
-            data = load_dataset("xsum")
-            if self.size:
-                for split_name, split_data  in data.items():
-                    data[split_name] = split_data.select(range(self.size))
-            data = data.map(self.build_prompt_simple, batched=False)
-            data = self.tokenize_data(data)
-            data.save_to_disk(f"{mod_path}/data/sumdata5.hf")
-
-    def tokenize_data(self, data):
-        def tokenize(example):
-            model_inputs = self.tokenizer(
-                example["document"],
-                padding="max_length",
-                max_length=self.seq_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            labels = self.tokenizer(
-                example["summary"],
-                padding="max_length",
-                max_length=self.seq_length,
-                truncation=True,
-                return_tensors="pt",
-            )
-            model_inputs["labels"] = labels["input_ids"]
-            return model_inputs
-
-        data = data.map(tokenize, batched=True)
-        return data
-
-
+            data = get_preprocessed_xsum(self.tokenizer)
+            data.save_to_disk(f"{mod_path}/data/sumdataconcat.hf")
 
     def setup(self, stage: str):
         mod_path = Path(__file__).parent
-        data = datasets.load_from_disk(f"{mod_path}/data/sumdata5.hf")
-        data = data.remove_columns(["document", "summary", "id"])
+        data = datasets.load_from_disk(f"{mod_path}/data/sumdataconcat.hf")
         data.set_format("pt")
         match stage:
             case "fit":
@@ -116,3 +51,64 @@ class SumDataset(DataModule):
         return DataLoader(self.validation, batch_size=self.batch_size)
     def test_dataloader(self):
         return DataLoader(self.test, batch_size=self.batch_size)
+    
+
+class Concatenator(object):
+    def __init__(self, chunk_size=2048):
+        self.chunk_size=chunk_size
+        self.residual = {"input_ids": [], "attention_mask": []}
+        
+    def __call__(self, batch):
+        concatenated_samples = {
+            k: v + list(chain(*batch[k])) for k, v in self.residual.items()
+        }
+
+        total_length = len(concatenated_samples[list(concatenated_samples.keys())[0]])
+
+        if total_length >= self.chunk_size:
+            chunk_num = total_length // self.chunk_size
+            result = {
+                k: [
+                    v[i : i + self.chunk_size]
+                    for i in range(0, chunk_num * self.chunk_size, self.chunk_size)
+                ]
+                for k, v in concatenated_samples.items()
+            }
+            self.residual = {
+                k: v[(chunk_num * self.chunk_size) :]
+                for k, v in concatenated_samples.items()
+            }
+        else:
+            result = concatenated_samples
+            self.residual = {k: [] for k in concatenated_samples.keys()}
+
+        result["labels"] = result["input_ids"].copy()
+
+        return result
+
+
+
+def get_preprocessed_xsum(tokenizer):
+    dataset = datasets.load_dataset("xsum")
+    prompt = (
+        f"Summarize this article:\n{{dialog}}\n---\nSummary:\n{{summary}}{{eos_token}}"
+    )
+
+    def apply_prompt_template(sample):
+        return {
+            "text": prompt.format(
+                dialog=sample["document"],
+                summary=sample["summary"],
+                eos_token=tokenizer.eos_token,
+            )
+        }
+
+    dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset["train"].features))
+        
+    dataset = dataset.map(
+        lambda sample: tokenizer(sample["text"]),
+        batched=True,
+        remove_columns=list(dataset["train"].features),
+    ).map(Concatenator(), batched=True)
+    return dataset
+
