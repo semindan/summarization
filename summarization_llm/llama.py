@@ -21,8 +21,8 @@ class LlamaModule(ModelModule):
         bnb_4_bit_compute_type = "bfloat16"
         compute_dtype = getattr(torch, bnb_4_bit_compute_type)
         bnb_config = transformers.BitsAndBytesConfig(
-            load_in_4bit=True,
-            # load_in_8bit=True,
+            # load_in_4bit=True,
+            load_in_8bit=True,
             bnb_4bit_quant_type='nf4',
             bnb_4bit_use_double_quant=False,
             bnb_4bit_compute_dtype=compute_dtype
@@ -39,7 +39,7 @@ class LlamaModule(ModelModule):
             quantization_config=bnb_config,
             device_map='auto',
         )
-
+        model.train()
         model = prepare_model_for_kbit_training(model)
 
         lora_config = LoraConfig(
@@ -75,14 +75,10 @@ class LlamaModule(ModelModule):
             labels=labels,
         )
 
-    def compute_loss(self, logits, labels):
-        loss_fct = CrossEntropyLoss(reduction="mean", ignore_index=-100)
-        return loss_fct(logits.view(-1, logits.size(-1)), labels.view(-1))
-
     def training_step(self, batch, batch_idx):
         # batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
         out = self(**batch)
-        return self.compute_loss(out.logits, batch["labels"])
+        return out.loss
 
     def detokenize(self, predictions):
         return self.tokenizer.batch_decode(predictions, skip_special_tokens=True)
@@ -90,7 +86,34 @@ class LlamaModule(ModelModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # batch["labels"] = torch.where(batch["labels"] != self.tokenizer.pad_token_id, batch["labels"], -100)
         out = self(**batch)
-        return self.compute_loss(out.logits, batch["labels"])
+        return out.loss
+    def on_validation_epoch_end(self) -> None:
+        eval_prompt = """
+        Summarize this article:
+        Niger's President Mohamed Bazoum has issued a defiant message on Twitter after soldiers announced a coup overnight in the West African nation.
+        Trouble began early on Wednesday when troops from the presidential guard took him captive.
+        His foreign minister has said the takeover does not have the backing of the whole military, but the army chief has now said he backs the junta.
+        Mr Bazoum is a key Western ally in the fight against Islamist militants.
+        The US and France both have military bases in the uranium-rich country - and have condemned the coup.
+        US Secretary of State Antony Blinken called up Mr Bazoum promising Washington's "unwavering support" and the UN and the European Union have called for the president's immediate release.
+        Africa Live: Updates on this and other stories from the continent
+        Putin's show: Which African leaders will have star role?
+        Are military takeovers on the rise in Africa?
+        The 64-year-old, who was elected Niger's president two years ago, took to Twitter on Thursday morning to say: "The hard-won achievements will be safeguarded. All Nigeriens who love democracy and freedom will see to it."
+        The capital, Niamey, is currently deserted, but this is largely because it has been raining heavily all morning.
+        Even a march planned by those who support the takeover has not happened because of the downpours.
+        But people in Niger are sharply divided about the turn of events.
+        Some are shocked and upset and while it was under way on Wednesday, hundreds of the president's supporters defied the soldiers to go out on to the streets and call for the military to return to the barracks.
+        They dispersed after warning shots were fired - the only gunfire heard in this bloodless seizure of power.
+        They have said they will not accept the coup but it is not clear how they will oppose it. They have not called any more streets protests for the time-being.
+
+        ---
+        Summary:
+        """
+        model_input = self.tokenizer(eval_prompt, return_tensors="pt")
+        with torch.no_grad():
+            print(self.tokenizer.decode(self.model.generate(**model_input, max_new_tokens=100, top_k=3, do_sample=True)[0], skip_special_tokens=True).replace(eval_prompt,"- "))
+        
      
     def test_step(self, batch, batch_idx, dataloader_idx=0):
         pass
@@ -103,25 +126,32 @@ class LlamaModule(ModelModule):
         decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
         decay_parameters = [name for name in decay_parameters if "bias" not in name]
         # params = self.trainer.model.named_parameters()
-        params = self.model.named_parameters()
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in params if n in decay_parameters],
-                "weight_decay": self.config["weight_decay"],
-            },
-            {
-                "params": [p for n, p in params if n not in decay_parameters],
-                "weight_decay": 0.0,
-            },
-        ]
+        # params = self.model.named_parameters()
+        # optimizer_grouped_parameters = [
+        #     {
+        #         "params": [p for n, p in params if n in decay_parameters],
+        #         "weight_decay": self.config["weight_decay"],
+        #     },
+        #     {
+        #         "params": [p for n, p in params if n not in decay_parameters],
+        #         "weight_decay": 0.0,
+        #     },
+        # ]
 
-        optimizer_kwargs = {
-            "betas": (self.config["adam_beta1"], self.config["adam_beta2"]),
-            "eps": self.config["adam_epsilon"],
-        }
-        optimizer_kwargs["lr"] = self.config["learning_rate"]
-        adam_bnb_optim = bnb.optim.PagedAdam32bit(
-            optimizer_grouped_parameters,
+        # optimizer_kwargs = {
+        #     "betas": (self.config["adam_beta1"], self.config["adam_beta2"]),
+        #     "eps": self.config["adam_epsilon"],
+        # }
+        # optimizer_kwargs["lr"] = self.config["learning_rate"]
+        # adam_bnb_optim = bnb.optim.AdamW(
+        #     optimizer_grouped_parameters,
+        #     betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
+        #     eps=self.config["adam_epsilon"],
+        #     lr=self.config["learning_rate"],
+        # )
+        params = self.model.parameters()
+        adam_bnb_optim = bnb.optim.AdamW8bit(
+            params,
             betas=(self.config["adam_beta1"], self.config["adam_beta2"]),
             eps=self.config["adam_epsilon"],
             lr=self.config["learning_rate"],
