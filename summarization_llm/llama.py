@@ -9,6 +9,7 @@ import transformers
 import bitsandbytes as bnb
 from torch import nn
 from transformers.trainer_pt_utils import get_parameter_names
+from accelerate import infer_auto_device_map
 
 class LlamaModule(ModelModule):
     def __init__(self, config=None, path='meta-llama/Llama-2-7b-hf', *args, **kwargs):
@@ -17,7 +18,7 @@ class LlamaModule(ModelModule):
         self.config = config
         self.tokenizer = AutoTokenizer.from_pretrained(path)
         self.tokenizer.pad_token_id = 0
-
+        
         bnb_4_bit_compute_type = "bfloat16"
         compute_dtype = getattr(torch, bnb_4_bit_compute_type)
         bnb_config = transformers.BitsAndBytesConfig(
@@ -31,15 +32,13 @@ class LlamaModule(ModelModule):
         model_config = transformers.AutoConfig.from_pretrained(
             path,
         )
-
         model = LlamaForCausalLM.from_pretrained(
             path,
             trust_remote_code=True,
             config=model_config,
             quantization_config=bnb_config,
-            device_map='auto',
+            device_map="auto",
         )
-        model.train()
         model = prepare_model_for_kbit_training(model)
 
         lora_config = LoraConfig(
@@ -123,8 +122,8 @@ class LlamaModule(ModelModule):
 
     def configure_optimizers(self):
         print("⚡", "using Llama 2", "⚡")
-        decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
-        decay_parameters = [name for name in decay_parameters if "bias" not in name]
+        # decay_parameters = get_parameter_names(self.model, [nn.LayerNorm])
+        # decay_parameters = [name for name in decay_parameters if "bias" not in name]
         # params = self.trainer.model.named_parameters()
         # params = self.model.named_parameters()
         # optimizer_grouped_parameters = [
@@ -149,7 +148,7 @@ class LlamaModule(ModelModule):
         #     eps=self.config["adam_epsilon"],
         #     lr=self.config["learning_rate"],
         # )
-        params = self.model.parameters()
+        params = self.trainer.model.parameters()
         adam_bnb_optim = bnb.optim.AdamW8bit(
             params,
             betas=(self.config["adam_beta1"], self.config["adam_beta2"]),

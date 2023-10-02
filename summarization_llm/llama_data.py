@@ -27,21 +27,37 @@ class SumDataset(DataModule):
     def prepare_data(self):
         mod_path = Path(__file__).parent
         if not os.path.exists(f"{mod_path}/data") or self.overwrite:
-            data = get_preprocessed_xsum(self.tokenizer)
-            data.save_to_disk(f"{mod_path}/data/sumdataconcat.hf")
+            train_data = get_preprocessed_xsum_train(self.tokenizer)
+            train_data.save_to_disk(f"{mod_path}/data/sumdata_train.hf")
+            fit_validation_data = get_preprocessed_xsum_train(self.tokenizer, split="validation")
+            fit_validation_data.save_to_disk(f"{mod_path}/data/sumdata_validation_fit.hf")
+            validation_data = get_preprocessed_xsum(self.tokenizer, split="validation")
+            validation_data.save_to_disk(f"{mod_path}/data/sumdata_validation.hf")
+            test_data = get_preprocessed_xsum(self.tokenizer, split="test")
+            test_data.save_to_disk(f"{mod_path}/data/sumdata_test.hf")
 
     def setup(self, stage: str):
         mod_path = Path(__file__).parent
-        data = datasets.load_from_disk(f"{mod_path}/data/sumdataconcat.hf")
-        data.set_format("pt")
+        train_data = datasets.load_from_disk(f"{mod_path}/data/sumdata_train.hf")
+        train_data.set_format("pt")
+        validation_data = datasets.load_from_disk(f"{mod_path}/data/sumdata_validation.hf")
+        validation_data.remove_columns(["labels"])
+        validation_data.set_format("pt")
+        test_data = datasets.load_from_disk(f"{mod_path}/data/sumdata_test.hf")
+        test_data.remove_columns(["labels"])
+        test_data.set_format("pt")
+        validation_fit_data = datasets.load_from_disk(f"{mod_path}/data/sumdata_validation_fit.hf")
+        validation_fit_data.remove_columns(["labels"])
+        validation_fit_data.set_format("pt")
+
         match stage:
             case "fit":
-                self.train = data["train"]
-                self.validation = data["validation"]
+                self.train = train_data
+                self.validation = validation_fit_data
             case "validation":
-                self.validation = data["validation"]
+                self.validation = validation_data
             case "test":
-                self.test = data["test"]
+                self.test = test_data
             case _:
                 raise ValueError("invalid stage")
     
@@ -88,8 +104,8 @@ class Concatenator(object):
 
 
 
-def get_preprocessed_xsum(tokenizer):
-    dataset = datasets.load_dataset("xsum")
+def get_preprocessed_xsum_train(tokenizer, split="train"):
+    dataset = datasets.load_dataset("xsum", split=split)
     prompt = (
         f"Summarize this article:\n{{dialog}}\n---\nSummary:\n{{summary}}{{eos_token}}"
     )
@@ -103,12 +119,40 @@ def get_preprocessed_xsum(tokenizer):
             )
         }
 
-    dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset["train"].features))
+    dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset.features))
         
     dataset = dataset.map(
         lambda sample: tokenizer(sample["text"]),
         batched=True,
-        remove_columns=list(dataset["train"].features),
+        remove_columns=list(dataset.features),
     ).map(Concatenator(), batched=True)
+    return dataset
+
+
+def get_preprocessed_xsum(tokenizer, split ="validation"):
+    dataset = datasets.load_dataset("xsum", split=split)
+    prompt = (
+        f"Summarize this article:\n{{dialog}}\n---\nSummary:\n"
+    )
+
+    def apply_prompt_template(sample):
+        return {
+            "text": prompt.format(
+                dialog=sample["document"],
+            ),
+            "labels": sample["summary"]
+        }
+    def tokenize(sample):
+        inputs = tokenizer(sample["text"])
+        inputs["labels"] = sample["labels"]
+        return inputs 
+
+    dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset.features))
+        
+    dataset = dataset.map(
+        tokenize,
+        batched=True,
+        remove_columns=list(dataset.features),
+    )
     return dataset
 

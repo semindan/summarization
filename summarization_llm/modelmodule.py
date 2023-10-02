@@ -1,11 +1,11 @@
 from typing import Any
 import lightning.pytorch as pl
-from torchmetrics.text.rouge import ROUGEScore
+# from torchmetrics.text.rouge import ROUGEScore
 class ModelModule(pl.LightningModule):
     def __init__(self, config=None, path=None,  *args, **kwargs):
         super().__init__()
         self.save_hyperparameters()
-        self.rouge = ROUGEScore()
+        # self.rouge = ROUGEScore()
         self.validation_outputs = []
     def forward(self, *args, **kwargs):
         pass

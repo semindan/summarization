@@ -2,15 +2,15 @@
 seed_everything: 42
 trainer:
   callbacks:
-    # - class_path: lightning.pytorch.callbacks.EarlyStopping
-    #   init_args:
-    #     patience: 5
-    #     monitor: eval/accumulate
-    #     min_delta: 0.0001
-    #     patience: 35
-    #     verbose: false
-    #     mode: max
-    #     check_finite: true
+    - class_path: lightning.pytorch.callbacks.EarlyStopping
+      init_args:
+        patience: 5
+        monitor: eval/accumulate
+        min_delta: 0.0001
+        patience: 35
+        verbose: false
+        mode: max
+        check_finite: true
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         save_top_k: -1
@@ -30,13 +30,13 @@ trainer:
         name: run_name_test
         save_dir: wandb_dir/run_name_test
         project: wandb_project_name
-  accelerator: gpu
-  strategy: auto
+  accelerator: auto
+  strategy: ddp
   #   class_path: lightning.pytorch.strategies.DDPStrategy
   #   init_args:
   #     static_graph: True
-  devices: 1
-  num_nodes: 4
+  devices: 2
+  num_nodes: 1
   precision: bf16-mixed
   fast_dev_run: false
   max_epochs: 2
