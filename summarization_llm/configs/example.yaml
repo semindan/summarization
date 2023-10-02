@@ -31,11 +31,11 @@ trainer:
         save_dir: wandb_dir/run_name_test
         project: wandb_project_name
   accelerator: auto
-  strategy: ddp
+  strategy: auto
   #   class_path: lightning.pytorch.strategies.DDPStrategy
   #   init_args:
   #     static_graph: True
-  devices: 2
+  devices: [0,1]
   num_nodes: 1
   precision: bf16-mixed
   fast_dev_run: false

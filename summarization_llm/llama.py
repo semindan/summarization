@@ -65,13 +65,17 @@ class LlamaModule(ModelModule):
         input_ids=None,
         attention_mask=None,
         labels=None,
+        inputs_embeds=None,
         *args,
         **kwargs
     ):
+        # if inputs_embeds is None:
+        #     inputs_embeds = self.model.base_model.model.model.embed_tokens(input_ids)
         return self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             labels=labels,
+            # inputs_embeds=inputs_embeds
         )
 
     def training_step(self, batch, batch_idx):
