@@ -15,12 +15,10 @@ trainer:
       init_args:
         save_top_k: -1
         save_last: true
-        # monitor: eval/accumulate
         mode: max
-        dirpath: checkpoints/vanilla7b # how to set the right folder?
+        dirpath: checkpoints/vanilla7b # directory must exist
         filename: "{epoch}-{step}"
         save_on_train_epoch_end: false
-        # every_n_train_steps: 1
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: step
@@ -35,7 +33,7 @@ trainer:
   #   class_path: lightning.pytorch.strategies.DDPStrategy
   #   init_args:
   #     static_graph: True
-  devices: [0,1]
+  devices: 2
   num_nodes: 1
   precision: bf16-mixed
   fast_dev_run: false
@@ -92,7 +90,7 @@ data:
   init_args:
     model_path: meta-llama/Llama-2-7b-hf
     size: 1000
-    batch_size: 4
+    batch_size: 2
     seq_length: 2048
     overwrite: false
-ckpt_path: null
+# ckpt_path: null

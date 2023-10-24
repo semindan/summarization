@@ -32,6 +32,8 @@ class LlamaModule(ModelModule):
         model_config = transformers.AutoConfig.from_pretrained(
             path,
         )
+
+        # breakpoint()
         model = LlamaForCausalLM.from_pretrained(
             path,
             trust_remote_code=True,

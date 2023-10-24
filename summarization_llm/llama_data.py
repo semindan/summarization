@@ -142,17 +142,20 @@ def get_preprocessed_xsum(tokenizer, split ="validation"):
             ),
             "labels": sample["summary"]
         }
-    def tokenize(sample):
-        inputs = tokenizer(sample["text"])
-        inputs["labels"] = sample["labels"]
-        return inputs 
+    # def tokenize(sample):
+    #     inputs = tokenizer(sample["text"])
+    #             # padding="max_length",
+    #             # max_length=1024,
+    #             # truncation=True,
+    #             # return_tensors="pt")
+    #     inputs["labels"] = sample["labels"]
+    #     return inputs 
 
     dataset = dataset.map(apply_prompt_template, remove_columns=list(dataset.features))
-        
-    dataset = dataset.map(
-        tokenize,
-        batched=True,
-        remove_columns=list(dataset.features),
-    )
+    # dataset = dataset.map(
+    #     tokenize,
+    #     batched=True,
+    #     remove_columns=list(dataset.features),
+    # )
     return dataset
 

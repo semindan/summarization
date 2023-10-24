@@ -12,5 +12,7 @@ scratch_checkpoint.py
 checkpoints/
 scratch*
 hfexample*
-
-
+vanilla*
+elastic*
+gen_xsum.py
+eval_nb.ipynb

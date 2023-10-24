@@ -1,10 +1,8 @@
 * TODO multi-gpu process launching works, yet there is an error (shouldn't lightning take care of devices? idk what to do with it rn)
-File "/home/semindan/.conda/envs/env_mamba/envs/llm_env_ultima/lib/python3.11/site-packages/torch/nn/functional.py", line 2210, in embedding
-    return torch.embedding(weight, input, padding_idx, scale_grad_by_freq, sparse)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:1 and cuda:0! (when checking argument for argument index in method wrapper_CUDA__index_select)
+OK apparently there is no sustainable way to launch PEFT in DDP or FSDP setting
 
 * TODO implement brio based on Vasek's code
+Too long to generate on the whole train set. Is it worth it?
 
-* TODO create evaluation pipeline with AlignScore
+
 
