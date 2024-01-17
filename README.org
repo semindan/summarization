@@ -1,8 +1,4 @@
-* TODO multi-gpu process launching works, yet there is an error (shouldn't lightning take care of devices? idk what to do with it rn)
-OK apparently there is no sustainable way to launch PEFT in DDP or FSDP setting
 
-* TODO implement brio based on Vasek's code
-Too long to generate on the whole train set. Is it worth it?
 
 
 
